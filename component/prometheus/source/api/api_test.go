@@ -244,19 +244,22 @@ func verifyExpectations(
 }
 
 func testAppendable(actualSamples chan testSample) []storage.Appendable {
-	interceptor := agentprom.NewInterceptor(
+	hookFn := func(
+		ref storage.SeriesRef,
+		l labels.Labels,
+		ts int64,
+		val float64,
+		next storage.Appender,
+	) (storage.SeriesRef, error) {
+
+		actualSamples <- testSample{ts: ts, val: val, l: l}
+		return ref, nil
+	}
+
+	return []storage.Appendable{agentprom.NewInterceptor(
 		nil,
 		agentprom.WithAppendHook(
-			func(ref storage.SeriesRef,
-				l labels.Labels,
-				ts int64,
-				val float64,
-				next storage.Appender,
-			) (storage.SeriesRef, error) {
-				actualSamples <- testSample{ts: ts, val: val, l: l}
-				return ref, nil
-			}))
-	return []storage.Appendable{interceptor}
+			hookFn))}
 }
 
 func request(ctx context.Context, rawRemoteWriteURL string, req *prompb.WriteRequest) error {
