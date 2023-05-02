@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/agent/component"
 	agentprom "github.com/grafana/agent/component/prometheus"
@@ -22,6 +21,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/protoadapt"
 )
 
 func TestForwardsMetrics(t *testing.T) {
@@ -272,13 +273,12 @@ func request(ctx context.Context, rawRemoteWriteURL string, req *prompb.WriteReq
 		return err
 	}
 
-	var buf []byte
-	pBuf := proto.NewBuffer(nil)
-	if err := pBuf.Marshal(req); err != nil {
+	buf, err := proto.Marshal(protoadapt.MessageV2Of(req))
+	if err != nil {
 		return err
 	}
 
-	compressed := snappy.Encode(buf, pBuf.Bytes())
+	compressed := snappy.Encode(buf, buf)
 	return client.Store(ctx, compressed)
 }
 
