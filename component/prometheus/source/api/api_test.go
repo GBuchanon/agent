@@ -8,13 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/phayes/freeport"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/agent/component"
 	agentprom "github.com/grafana/agent/component/prometheus"
 	"github.com/grafana/agent/pkg/util"
+	"github.com/phayes/freeport"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
