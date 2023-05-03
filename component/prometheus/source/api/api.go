@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/agent/component"
@@ -37,13 +38,13 @@ type Arguments struct {
 type Component struct {
 	opts               component.Options
 	handler            http.Handler
-	serverErr          chan error
 	fanout             *agentprom.Fanout
 	uncheckedCollector *util.UncheckedCollector
 
 	updateMut sync.RWMutex
 	args      Arguments
 	server    *server.Server
+	healthErr error
 }
 
 func New(opts component.Options, args Arguments) (component.Component, error) {
@@ -52,7 +53,6 @@ func New(opts component.Options, args Arguments) (component.Component, error) {
 	c := &Component{
 		opts:               opts,
 		handler:            remote.NewWriteHandler(opts.Logger, fanout),
-		serverErr:          make(chan error),
 		fanout:             fanout,
 		args:               args,
 		uncheckedCollector: uncheckedCollector,
@@ -68,6 +68,7 @@ func New(opts component.Options, args Arguments) (component.Component, error) {
 	return c, nil
 }
 
+// Run satisfies the Component interface.
 func (c *Component) Run(ctx context.Context) error {
 	go c.runServer()
 	defer func() {
@@ -76,17 +77,14 @@ func (c *Component) Run(ctx context.Context) error {
 		c.shutdownServer()
 	}()
 
-	for {
-		select {
-		case err := <-c.serverErr:
-			return fmt.Errorf("server terminated with error: %v", err)
-		case <-ctx.Done():
-			level.Info(c.opts.Logger).Log("msg", "terminating due to context done")
-			return nil
-		}
+	for range ctx.Done() {
+		level.Info(c.opts.Logger).Log("msg", "terminating due to context done")
+		return nil
 	}
+	return nil
 }
 
+// Update satisfies the Component interface.
 func (c *Component) Update(args component.Arguments) error {
 	newArgs := args.(Arguments)
 	c.fanout.UpdateChildren(newArgs.ForwardTo)
@@ -99,10 +97,13 @@ func (c *Component) Update(args component.Arguments) error {
 		return nil
 	}
 	c.shutdownServer()
+	c.healthErr = nil
 
 	err := c.createNewServer(newArgs)
 	if err != nil {
-		return fmt.Errorf("failed to create new server on update: %v", err)
+		err := fmt.Errorf("failed to create new server on update: %v", err)
+		c.healthErr = err
+		return err
 	}
 	go c.runServer()
 
@@ -110,22 +111,39 @@ func (c *Component) Update(args component.Arguments) error {
 	return nil
 }
 
+// CurrentHealth satisfies [component.HealthComponent] interface.
+func (c *Component) CurrentHealth() component.Health {
+	c.updateMut.RLock()
+	defer c.updateMut.RUnlock()
+	if c.healthErr != nil {
+		return component.Health{
+			Health:     component.HealthTypeUnhealthy,
+			Message:    fmt.Sprintf("component error: %v", c.healthErr),
+			UpdateTime: time.Now(),
+		}
+	}
+	return component.Health{
+		Health:     component.HealthTypeHealthy,
+		Message:    "the component is healthy",
+		UpdateTime: time.Now(),
+	}
+}
+
 func (c *Component) runServer() {
 	c.updateMut.RLock()
 	s := c.server
 	c.updateMut.RUnlock()
 
-	if s == nil { // already shut down
+	if s == nil { // already shut down and attempt to run may panic
 		return
 	}
 
 	err := s.Run()
 	level.Warn(c.opts.Logger).Log("msg", "server Run exited", "error", err)
 	if err != nil {
-		select {
-		case c.serverErr <- err:
-		default:
-		}
+		c.updateMut.Lock()
+		defer c.updateMut.Unlock()
+		c.healthErr = err
 	}
 }
 

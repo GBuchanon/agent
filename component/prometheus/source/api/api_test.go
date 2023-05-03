@@ -67,6 +67,51 @@ func TestForwardsMetrics(t *testing.T) {
 	verifyExpectations(t, input, expected, actualSamples, args, ctx)
 }
 
+func TestHealthy(t *testing.T) {
+	timestamp := time.Now().Add(time.Second).UnixMilli()
+	input := []prompb.TimeSeries{{
+		Labels:  []prompb.Label{{Name: "cluster", Value: "local"}, {Name: "foo", Value: "bar"}},
+		Samples: []prompb.Sample{{Timestamp: timestamp, Value: 12}},
+	}}
+	expected := []testSample{
+		{ts: timestamp, val: 12, l: labels.FromStrings("cluster", "local", "foo", "bar")},
+	}
+	actualSamples := make(chan testSample, 100)
+
+	// Start the component
+	port, err := freeport.GetFreePort()
+	require.NoError(t, err)
+	args := Arguments{HTTPAddress: "localhost", HTTPPort: port, ForwardTo: testAppendable(actualSamples)}
+	comp, err := New(testOptions(t), args)
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	go func() {
+		require.NoError(t, comp.Run(ctx))
+	}()
+
+	// verify healthy after starting up
+	hc := comp.(component.HealthComponent)
+	require.Equal(t, component.HealthTypeHealthy, hc.CurrentHealth().Health)
+	require.Contains(t, hc.CurrentHealth().Message, "the component is healthy")
+
+	// send some data and verify still healthy
+	verifyExpectations(t, input, expected, actualSamples, args, ctx)
+	require.Equal(t, component.HealthTypeHealthy, hc.CurrentHealth().Health)
+}
+
+func TestUnhealthy(t *testing.T) {
+	args := Arguments{HTTPAddress: "localhost", HTTPPort: 0, ForwardTo: nil}
+	comp, err := New(testOptions(t), args)
+	require.NoError(t, err)
+
+	c := comp.(*Component)
+	c.healthErr = fmt.Errorf("test error")
+
+	require.Equal(t, component.HealthTypeUnhealthy, c.CurrentHealth().Health)
+	require.Contains(t, c.CurrentHealth().Message, "test error")
+}
+
 func TestUpdate(t *testing.T) {
 	timestamp := time.Now().Add(time.Second).UnixMilli()
 	input01 := []prompb.TimeSeries{{
