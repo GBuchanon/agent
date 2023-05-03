@@ -18,6 +18,7 @@ Main (unreleased)
 - New Grafana Agent Flow components:
   - `prometheus.operator.servicemonitors` discovers ServiceMonitor resources in your Kubernetes cluster and scrape
     the targets they reference. (@captncraig, @marctc, @jcreixell)
+  - `prometheus.source.api` - receive Prometheus metrics over HTTP (e.g. from other agents). (@thampiotr)
 
 - Added coalesce function to river stdlib. (@jkroepke)
 

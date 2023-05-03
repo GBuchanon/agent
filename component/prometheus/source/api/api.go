@@ -148,7 +148,7 @@ func (c *Component) runServer() {
 }
 
 // createNewServer will create a new server.Server and assign it to the server field.
-// It is not goroutine-safe and a updateMut write lock should be held when it's called.
+// It is not goroutine-safe and an updateMut write lock should be held when it's called.
 func (c *Component) createNewServer(args Arguments) error {
 	config := c.serverConfigForArgs(args)
 
@@ -171,7 +171,7 @@ func (c *Component) createNewServer(args Arguments) error {
 }
 
 // shutdownServer will shut down the currently used server.
-// It is not goroutine-safe and a updateMut write lock should be held when it's called.
+// It is not goroutine-safe and an updateMut write lock should be held when it's called.
 func (c *Component) shutdownServer() {
 	if c.server != nil {
 		c.server.Shutdown()
@@ -182,7 +182,7 @@ func (c *Component) shutdownServer() {
 
 func (c *Component) serverConfigForArgs(args Arguments) server.Config {
 	return server.Config{
-		MetricsNamespace:        "prometheus_source_api",
+		MetricsNamespace:        "agent_prometheus_source_api",
 		HTTPListenAddress:       args.HTTPAddress,
 		HTTPListenPort:          args.HTTPPort,
 		Log:                     logging.GoKit(c.opts.Logger),
